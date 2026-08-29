@@ -1,28 +1,145 @@
 import streamlit as st
 import pandas as pd
 import joblib
+
 from sklearn.preprocessing import LabelEncoder
-
-
-# ============================================================
-# PAGE CONFIG
-# ============================================================
-
-st.set_page_config(
-    page_title="Customer Churn Predictor",
-    page_icon="📡",
-    layout="wide"
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    confusion_matrix
 )
 
 
 # ============================================================
-# LOAD MODEL AND DATA
+# PAGE CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="Telco Churn Intelligence",
+    page_icon="📡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+
+# ============================================================
+# CUSTOM CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* Main layout */
+    .block-container {
+        max-width: 1250px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+
+    /* Headings */
+    h1 {
+        font-size: 2.3rem !important;
+        font-weight: 750 !important;
+        letter-spacing: -0.8px;
+    }
+
+    h2 {
+        font-size: 1.55rem !important;
+        font-weight: 700 !important;
+    }
+
+    h3 {
+        font-size: 1.15rem !important;
+        font-weight: 650 !important;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        border-right: 1px solid #e2e8f0;
+    }
+
+    /* Metrics */
+    /* ---------- METRIC CARDS ---------- */
+
+[data-testid="stMetric"] {
+    background: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 14px !important;
+    padding: 1.1rem !important;
+}
+
+/* Metric label */
+[data-testid="stMetricLabel"] {
+    color: #cbd5e1 !important;
+    font-weight: 600 !important;
+}
+
+/* Metric number */
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+    font-weight: 750 !important;
+}
+
+/* Metric number's inner elements */
+[data-testid="stMetricValue"] div {
+    color: #ffffff !important;
+}
+
+/* Metric delta, if present */
+[data-testid="stMetricDelta"] {
+    color: #cbd5e1 !important;
+}
+
+    /* Buttons */
+    .stButton > button {
+        min-height: 48px;
+        border-radius: 10px;
+        font-weight: 650;
+    }
+
+    /* Select boxes */
+    div[data-baseweb="select"] > div {
+        border-radius: 9px;
+    }
+
+    /* Number inputs */
+    div[data-baseweb="input"] > div {
+        border-radius: 9px;
+    }
+
+    /* Progress bar */
+    div[data-testid="stProgress"] {
+        margin-top: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    /* Remove excessive spacing */
+    hr {
+        margin: 1.5rem 0;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# LOAD MODEL
 # ============================================================
 
 @st.cache_resource
 def load_model():
     return joblib.load("churn_model.pkl")
 
+
+# ============================================================
+# LOAD DATA
+# ============================================================
 
 @st.cache_data
 def load_data():
@@ -36,7 +153,7 @@ df.columns = df.columns.str.strip()
 
 
 # ============================================================
-# DATA PREPARATION
+# DATA PREPROCESSING
 # ============================================================
 
 drop_columns = [
@@ -55,10 +172,12 @@ drop_columns = [
     "Churn Reason"
 ]
 
-for col in drop_columns:
-    if col in df.columns:
-        df.drop(col, axis=1, inplace=True)
+for column in drop_columns:
+    if column in df.columns:
+        df.drop(column, axis=1, inplace=True)
 
+
+# Convert Total Charges to numeric
 
 df["Total Charges"] = pd.to_numeric(
     df["Total Charges"],
@@ -74,30 +193,98 @@ df["Total Charges"] = df["Total Charges"].fillna(
 # ENCODERS
 # ============================================================
 
-categorical_columns = []
-
-for col in df.columns:
-    if df[col].dtype == "object":
-        categorical_columns.append(col)
+categorical_columns = [
+    column
+    for column in df.columns
+    if df[column].dtype == "object"
+]
 
 
 encoders = {}
 
-for col in categorical_columns:
+for column in categorical_columns:
 
     encoder = LabelEncoder()
 
     encoder.fit(
-        df[col].astype(str)
+        df[column].astype(str)
     )
 
-    encoders[col] = encoder
+    encoders[column] = encoder
 
+
+# ============================================================
+# MODEL FEATURES
+# ============================================================
 
 feature_columns = [
-    col for col in df.columns
-    if col != "Churn Value"
+    column
+    for column in df.columns
+    if column != "Churn Value"
 ]
+
+
+# ============================================================
+# MODEL PERFORMANCE
+# ============================================================
+
+@st.cache_data
+def calculate_model_metrics():
+
+    X = df[feature_columns].copy()
+    y = df["Churn Value"]
+
+    for column in categorical_columns:
+
+        X[column] = encoders[column].transform(
+            X[column].astype(str)
+        )
+
+    predictions = model.predict(X)
+
+    probabilities = model.predict_proba(X)[:, 1]
+
+    accuracy = accuracy_score(
+        y,
+        predictions
+    )
+
+    precision = precision_score(
+        y,
+        predictions,
+        zero_division=0
+    )
+
+    recall = recall_score(
+        y,
+        predictions,
+        zero_division=0
+    )
+
+    f1 = f1_score(
+        y,
+        predictions,
+        zero_division=0
+    )
+
+    roc_auc = roc_auc_score(
+        y,
+        probabilities
+    )
+
+    matrix = confusion_matrix(
+        y,
+        predictions
+    )
+
+    return (
+        accuracy,
+        precision,
+        recall,
+        f1,
+        roc_auc,
+        matrix
+    )
 
 
 # ============================================================
@@ -106,10 +293,10 @@ feature_columns = [
 
 with st.sidebar:
 
-    st.title("📡 Churn Predictor")
+    st.title("📡 Telco Intelligence")
 
     st.caption(
-        "Machine Learning Application"
+        "Customer Churn Prediction"
     )
 
     st.divider()
@@ -120,32 +307,46 @@ with st.sidebar:
             "🏠 Overview",
             "🔮 Predict Churn",
             "📊 Analytics",
+            "🧠 Model Performance",
             "ℹ️ About"
         ]
     )
 
     st.divider()
 
+    st.caption("Machine Learning")
+
+    st.write("🌲 Random Forest Classifier")
+
     st.caption(
-        "Random Forest Classifier"
+        "End-to-end customer churn analytics"
     )
 
 
 # ============================================================
-# OVERVIEW
+# OVERVIEW PAGE
 # ============================================================
 
 if page == "🏠 Overview":
 
-    st.title("📡 Customer Churn Prediction")
+    # --------------------------------------------------------
+    # HEADER
+    # --------------------------------------------------------
+
+    st.title("📡 Telco Churn Intelligence")
 
     st.write(
-        "An interactive machine learning application "
-        "that predicts whether a telecom customer is "
-        "likely to churn."
+        "A machine learning dashboard for identifying "
+        "customers at risk of churn and supporting "
+        "proactive retention decisions."
     )
 
     st.divider()
+
+
+    # --------------------------------------------------------
+    # DATASET SUMMARY
+    # --------------------------------------------------------
 
     total_customers = len(df)
 
@@ -153,8 +354,9 @@ if page == "🏠 Overview":
         df["Churn Value"].sum()
     )
 
-    active_customers = (
-        total_customers - churned_customers
+    retained_customers = (
+        total_customers -
+        churned_customers
     )
 
     churn_rate = (
@@ -163,10 +365,14 @@ if page == "🏠 Overview":
     ) * 100
 
 
+    st.subheader("Dataset Overview")
+
+
     col1, col2, col3, col4 = st.columns(4)
 
 
     with col1:
+
         st.metric(
             "Total Customers",
             f"{total_customers:,}"
@@ -174,6 +380,7 @@ if page == "🏠 Overview":
 
 
     with col2:
+
         st.metric(
             "Churned Customers",
             f"{churned_customers:,}"
@@ -181,69 +388,133 @@ if page == "🏠 Overview":
 
 
     with col3:
+
         st.metric(
-            "Active Customers",
-            f"{active_customers:,}"
+            "Retained Customers",
+            f"{retained_customers:,}"
         )
 
 
     with col4:
+
         st.metric(
-            "Churn Rate",
+            "Overall Churn Rate",
             f"{churn_rate:.1f}%"
         )
 
 
     st.divider()
 
-    st.subheader("🎯 Project Overview")
+
+    # --------------------------------------------------------
+    # PROJECT PURPOSE
+    # --------------------------------------------------------
+
+    st.subheader("Turning Customer Data into Retention Insights")
+
 
     col1, col2 = st.columns(2)
 
 
     with col1:
 
-        st.markdown("### Objective")
+        with st.container(border=True):
 
-        st.write(
-            "Identify telecom customers who are likely "
-            "to leave the service using machine learning."
-        )
+            st.markdown("### 🎯 Project Purpose")
+
+            st.write(
+                "Customer churn is a major challenge for "
+                "telecommunication businesses. The objective "
+                "of this project is to identify customers who "
+                "may be likely to leave the service."
+            )
+
+            st.write(
+                "The model uses customer demographics, "
+                "services, contract information and billing "
+                "details to estimate churn risk."
+            )
 
 
     with col2:
 
-        st.markdown("### Model")
+        with st.container(border=True):
 
-        st.write(
-            "Random Forest Classifier trained on "
-            "customer demographic, service and billing data."
-        )
+            st.markdown("### 💡 Business Value")
+
+            st.write(
+                "Churn predictions can help businesses "
+                "identify high-risk customers before they leave."
+            )
+
+            st.write(
+                "These insights can support targeted retention "
+                "campaigns, personalized offers and proactive "
+                "customer engagement."
+            )
 
 
     st.divider()
 
+
+    # --------------------------------------------------------
+    # MACHINE LEARNING WORKFLOW
+    # --------------------------------------------------------
+
     st.subheader("🔄 Machine Learning Workflow")
 
-    st.write(
-        """
-        **Data → Cleaning → Feature Encoding → "
-        "Random Forest → Churn Probability → Risk Level**
-        """
+
+    workflow = [
+        ("01", "Customer Data"),
+        ("02", "Data Cleaning"),
+        ("03", "Feature Encoding"),
+        ("04", "Random Forest"),
+        ("05", "Risk Prediction")
+    ]
+
+
+    cols = st.columns(5)
+
+
+    for col, (number, name) in zip(cols, workflow):
+
+        with col:
+
+            with st.container(border=True):
+
+                st.markdown(f"### {number}")
+
+                st.write(name)
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # QUICK INSIGHT
+    # --------------------------------------------------------
+
+    st.subheader("📌 Key Dataset Insight")
+
+
+    st.info(
+        f"Out of {total_customers:,} customers, "
+        f"{churned_customers:,} have churned, resulting in "
+        f"an overall churn rate of {churn_rate:.1f}%."
     )
 
 
 # ============================================================
-# PREDICT CHURN
+# PREDICTION PAGE
 # ============================================================
 
 elif page == "🔮 Predict Churn":
 
-    st.title("🔮 Predict Customer Churn")
+    st.title("🔮 Customer Churn Prediction")
 
     st.write(
-        "Enter customer information to estimate "
-        "their probability of churn."
+        "Enter the customer's profile, service and billing "
+        "information to estimate their churn risk."
     )
 
     st.divider()
@@ -254,6 +525,7 @@ elif page == "🔮 Predict Churn":
     # --------------------------------------------------------
 
     st.subheader("👤 Customer Profile")
+
 
     col1, col2, col3 = st.columns(3)
 
@@ -294,11 +566,15 @@ elif page == "🔮 Predict Churn":
         )
 
 
+    st.divider()
+
+
     # --------------------------------------------------------
-    # SERVICES
+    # SERVICE INFORMATION
     # --------------------------------------------------------
 
-    st.subheader("📱 Services")
+    st.subheader("📱 Service Information")
+
 
     col1, col2, col3 = st.columns(3)
 
@@ -342,11 +618,15 @@ elif page == "🔮 Predict Churn":
         )
 
 
+    st.divider()
+
+
     # --------------------------------------------------------
     # ADDITIONAL SERVICES
     # --------------------------------------------------------
 
     st.subheader("🛠️ Additional Services")
+
 
     col1, col2, col3 = st.columns(3)
 
@@ -375,11 +655,15 @@ elif page == "🔮 Predict Churn":
         )
 
 
+    st.divider()
+
+
     # --------------------------------------------------------
     # CONTRACT & BILLING
     # --------------------------------------------------------
 
     st.subheader("💳 Contract & Billing")
+
 
     col1, col2, col3 = st.columns(3)
 
@@ -437,38 +721,60 @@ elif page == "🔮 Predict Churn":
 
 
     # --------------------------------------------------------
-    # PREDICT
+    # PREDICTION BUTTON
     # --------------------------------------------------------
 
     predict_button = st.button(
-        "🔮 Predict Churn Risk",
+        "🔮 Analyze Customer Risk",
         type="primary",
         use_container_width=True
     )
 
+
+    # --------------------------------------------------------
+    # PREDICTION
+    # --------------------------------------------------------
 
     if predict_button:
 
         customer = {
 
             "Gender": gender,
+
             "Senior Citizen": senior_citizen,
+
             "Partner": partner,
+
             "Dependents": dependents,
+
             "Tenure Months": tenure,
+
             "Phone Service": phone_service,
+
             "Multiple Lines": multiple_lines,
+
             "Internet Service": internet_service,
+
             "Online Security": online_security,
+
             "Online Backup": online_backup,
+
             "Device Protection": device_protection,
+
             "Tech Support": tech_support,
+
             "Streaming TV": streaming_tv,
+
             "Streaming Movies": streaming_movies,
+
             "Contract": contract,
+
             "Paperless Billing": paperless_billing,
+
             "Payment Method": payment_method,
+
             "Monthly Charges": monthly_charges,
+
             "Total Charges": total_charges
         }
 
@@ -478,14 +784,18 @@ elif page == "🔮 Predict Churn":
         )
 
 
-        # Encode categorical columns
+        # ----------------------------------------------------
+        # ENCODE CATEGORICAL VARIABLES
+        # ----------------------------------------------------
 
-        for col in categorical_columns:
+        for column in categorical_columns:
 
-            if col in input_df.columns:
+            if column in input_df.columns:
 
-                input_df[col] = encoders[col].transform(
-                    input_df[col].astype(str)
+                input_df[column] = encoders[
+                    column
+                ].transform(
+                    input_df[column].astype(str)
                 )
 
 
@@ -496,7 +806,9 @@ elif page == "🔮 Predict Churn":
         ]
 
 
-        # Make prediction
+        # ----------------------------------------------------
+        # MODEL PREDICTION
+        # ----------------------------------------------------
 
         prediction = model.predict(
             input_df
@@ -513,44 +825,77 @@ elif page == "🔮 Predict Churn":
         )
 
 
-        # Risk classification
+        # ----------------------------------------------------
+        # RISK CLASSIFICATION
+        # ----------------------------------------------------
 
         if probability_percentage >= 70:
 
-            risk = "HIGH RISK"
+            risk = "High Risk"
+
+            recommendation = (
+                "This customer shows a high likelihood "
+                "of churn. Consider proactive retention "
+                "actions such as personalized offers, "
+                "service reviews or targeted outreach."
+            )
+
+            status = "🔴"
+
 
         elif probability_percentage >= 40:
 
-            risk = "MEDIUM RISK"
+            risk = "Medium Risk"
+
+            recommendation = (
+                "This customer shows a moderate likelihood "
+                "of churn. Consider monitoring engagement "
+                "and introducing suitable retention initiatives."
+            )
+
+            status = "🟠"
+
 
         else:
 
-            risk = "LOW RISK"
+            risk = "Low Risk"
+
+            recommendation = (
+                "This customer currently shows a lower "
+                "likelihood of churn. Continue maintaining "
+                "a positive customer experience."
+            )
+
+            status = "🟢"
 
 
-        # ====================================================
-        # CLEAN RESULT
-        # ====================================================
+        # ----------------------------------------------------
+        # RESULT
+        # ----------------------------------------------------
 
         st.divider()
 
-        st.subheader("📊 Prediction Result")
+        st.subheader("📊 Churn Risk Assessment")
 
+
+        # Risk status
 
         if prediction == 1:
 
             st.error(
-                "🔴 " + risk
+                f"{status} {risk}"
             )
 
         else:
 
             st.success(
-                "🟢 " + risk
+                f"{status} {risk}"
             )
 
 
-        col1, col2 = st.columns(2)
+        # Main metrics
+
+        col1, col2, col3 = st.columns(3)
 
 
         with col1:
@@ -572,32 +917,34 @@ elif page == "🔮 Predict Churn":
             )
 
 
-        st.write(
-            "**Churn Probability**"
-        )
+        with col3:
+
+            st.metric(
+                "Risk Level",
+                risk
+            )
+
+
+        # Probability visualization
+
+        st.write("**Estimated Churn Probability**")
 
         st.progress(
             probability
         )
 
 
-        if prediction == 1:
+        # Recommendation
 
-            st.warning(
-                "⚠️ This customer may require "
-                "proactive retention strategies."
-            )
+        st.subheader("💡 Recommended Action")
 
-        else:
-
-            st.info(
-                "ℹ️ This customer currently shows "
-                "a lower likelihood of churn."
-            )
+        st.info(
+            recommendation
+        )
 
 
 # ============================================================
-# ANALYTICS
+# ANALYTICS PAGE
 # ============================================================
 
 elif page == "📊 Analytics":
@@ -605,11 +952,16 @@ elif page == "📊 Analytics":
     st.title("📊 Customer Analytics")
 
     st.write(
-        "Explore the customer dataset."
+        "Explore customer churn patterns across contracts, "
+        "services, payment methods and tenure."
     )
 
     st.divider()
 
+
+    # --------------------------------------------------------
+    # SUMMARY METRICS
+    # --------------------------------------------------------
 
     total_customers = len(df)
 
@@ -618,8 +970,14 @@ elif page == "📊 Analytics":
     )
 
     retained = (
-        total_customers - churned
+        total_customers -
+        churned
     )
+
+    churn_rate = (
+        churned /
+        total_customers
+    ) * 100
 
 
     col1, col2, col3 = st.columns(3)
@@ -636,7 +994,7 @@ elif page == "📊 Analytics":
     with col2:
 
         st.metric(
-            "Churned",
+            "Churned Customers",
             f"{churned:,}"
         )
 
@@ -644,20 +1002,22 @@ elif page == "📊 Analytics":
     with col3:
 
         st.metric(
-            "Retained",
-            f"{retained:,}"
+            "Churn Rate",
+            f"{churn_rate:.1f}%"
         )
 
 
     st.divider()
 
 
-    st.subheader(
-        "Customer Churn Distribution"
-    )
+    # --------------------------------------------------------
+    # CHURN DISTRIBUTION
+    # --------------------------------------------------------
+
+    st.subheader("Customer Churn Distribution")
 
 
-    churn_chart = pd.DataFrame(
+    churn_distribution = pd.DataFrame(
         {
             "Customer Status": [
                 "Retained",
@@ -673,85 +1033,421 @@ elif page == "📊 Analytics":
 
 
     st.bar_chart(
-        churn_chart.set_index(
+        churn_distribution.set_index(
             "Customer Status"
         )
     )
 
 
-    st.subheader(
-        "Contract Distribution"
-    )
+    st.divider()
 
 
-    contract_counts = (
-        df["Contract"]
-        .value_counts()
-    )
+    # --------------------------------------------------------
+    # CONTRACT ANALYSIS
+    # --------------------------------------------------------
+
+    st.subheader("Churn by Contract Type")
 
 
-    st.bar_chart(
-        contract_counts
-    )
-
-
-    st.subheader(
-        "Internet Service Distribution"
-    )
-
-
-    internet_counts = (
-        df["Internet Service"]
-        .value_counts()
+    contract_churn = (
+        df.groupby("Contract")[
+            "Churn Value"
+        ]
+        .mean()
+        .sort_values(
+            ascending=False
+        )
+        * 100
     )
 
 
     st.bar_chart(
-        internet_counts
+        contract_churn
+    )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # INTERNET SERVICE
+    # --------------------------------------------------------
+
+    st.subheader("Churn by Internet Service")
+
+
+    internet_churn = (
+        df.groupby("Internet Service")[
+            "Churn Value"
+        ]
+        .mean()
+        .sort_values(
+            ascending=False
+        )
+        * 100
+    )
+
+
+    st.bar_chart(
+        internet_churn
+    )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # PAYMENT METHOD
+    # --------------------------------------------------------
+
+    st.subheader("Churn by Payment Method")
+
+
+    payment_churn = (
+        df.groupby("Payment Method")[
+            "Churn Value"
+        ]
+        .mean()
+        .sort_values(
+            ascending=False
+        )
+        * 100
+    )
+
+
+    st.bar_chart(
+        payment_churn
+    )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # TENURE
+    # --------------------------------------------------------
+
+    st.subheader("Churn by Customer Tenure")
+
+
+    tenure_bins = pd.cut(
+        df["Tenure Months"],
+        bins=[
+            -1,
+            6,
+            12,
+            24,
+            48,
+            72,
+            120
+        ],
+        labels=[
+            "0–6 months",
+            "7–12 months",
+            "13–24 months",
+            "25–48 months",
+            "49–72 months",
+            "73+ months"
+        ]
+    )
+
+
+    tenure_churn = (
+        df.groupby(
+            tenure_bins,
+            observed=False
+        )["Churn Value"]
+        .mean()
+        * 100
+    )
+
+
+    st.bar_chart(
+        tenure_churn
     )
 
 
 # ============================================================
-# ABOUT
+# MODEL PERFORMANCE PAGE
 # ============================================================
 
-elif page == "ℹ️ About":
+elif page == "🧠 Model Performance":
 
-    st.title("ℹ️ About")
-
-    st.subheader(
-        "Customer Churn Prediction"
-    )
+    st.title("🧠 Model Performance")
 
     st.write(
-        """
-        This project uses machine learning to predict
-        whether a telecom customer is likely to churn.
-
-        **Model:** Random Forest Classifier
-
-        **Technologies:**
-        Python, Pandas, NumPy, Scikit-learn,
-        Streamlit and Joblib.
-
-        **Application Workflow:**
-
-        Customer Information  
-        ↓  
-        Data Preprocessing  
-        ↓  
-        Feature Encoding  
-        ↓  
-        Random Forest Model  
-        ↓  
-        Churn Probability  
-        ↓  
-        Risk Classification
-        """
+        "Evaluation metrics for the trained "
+        "Random Forest classification model."
     )
 
     st.divider()
 
+
+    (
+        accuracy,
+        precision,
+        recall,
+        f1,
+        roc_auc,
+        matrix
+    ) = calculate_model_metrics()
+
+
+    # --------------------------------------------------------
+    # PERFORMANCE METRICS
+    # --------------------------------------------------------
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+
+    with col1:
+
+        st.metric(
+            "Accuracy",
+            f"{accuracy * 100:.1f}%"
+        )
+
+
+    with col2:
+
+        st.metric(
+            "Precision",
+            f"{precision * 100:.1f}%"
+        )
+
+
+    with col3:
+
+        st.metric(
+            "Recall",
+            f"{recall * 100:.1f}%"
+        )
+
+
+    with col4:
+
+        st.metric(
+            "F1 Score",
+            f"{f1 * 100:.1f}%"
+        )
+
+
+    with col5:
+
+        st.metric(
+            "ROC-AUC",
+            f"{roc_auc:.3f}"
+        )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # CONFUSION MATRIX
+    # --------------------------------------------------------
+
+    st.subheader("Confusion Matrix")
+
+
+    matrix_df = pd.DataFrame(
+        matrix,
+        index=[
+            "Actual: Retained",
+            "Actual: Churned"
+        ],
+        columns=[
+            "Predicted: Retained",
+            "Predicted: Churned"
+        ]
+    )
+
+
+    st.dataframe(
+        matrix_df,
+        use_container_width=True
+    )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # METRIC INTERPRETATION
+    # --------------------------------------------------------
+
+    st.subheader("📌 Understanding the Metrics")
+
+
+    col1, col2 = st.columns(2)
+
+
+    with col1:
+
+        with st.container(border=True):
+
+            st.markdown("### Accuracy")
+
+            st.write(
+                "The percentage of customers correctly "
+                "classified by the model."
+            )
+
+            st.markdown("### Precision")
+
+            st.write(
+                "Among customers predicted to churn, "
+                "the proportion who actually churned."
+            )
+
+
+    with col2:
+
+        with st.container(border=True):
+
+            st.markdown("### Recall")
+
+            st.write(
+                "Among customers who actually churned, "
+                "the proportion correctly identified."
+            )
+
+            st.markdown("### F1 Score")
+
+            st.write(
+                "A balance between precision and recall."
+            )
+
+
+# ============================================================
+# ABOUT PAGE
+# ============================================================
+
+elif page == "ℹ️ About":
+
+    st.title("ℹ️ About the Project")
+
+
+    st.write(
+        "Customer Churn Intelligence is an end-to-end "
+        "machine learning application designed to predict "
+        "customer churn in the telecommunications industry."
+    )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # PROJECT DESCRIPTION
+    # --------------------------------------------------------
+
+    st.subheader("🎯 Project Objective")
+
+
+    st.write(
+        "The objective is to identify customers who are "
+        "more likely to leave a telecom service and provide "
+        "risk-based insights that can support customer "
+        "retention strategies."
+    )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # ML APPROACH
+    # --------------------------------------------------------
+
+    st.subheader("🧠 Machine Learning Approach")
+
+
+    st.write(
+        "A Random Forest Classifier is used to estimate "
+        "the probability of customer churn based on "
+        "demographic, service, contract and billing features."
+    )
+
+
+    st.write(
+        "Categorical variables are encoded using LabelEncoder "
+        "before being passed to the trained model."
+    )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # WORKFLOW
+    # --------------------------------------------------------
+
+    st.subheader("🔄 Application Workflow")
+
+
+    workflow = [
+        "Customer Data",
+        "Data Cleaning",
+        "Feature Encoding",
+        "Random Forest Model",
+        "Churn Probability",
+        "Risk Classification",
+        "Retention Recommendation"
+    ]
+
+
+    for index, step in enumerate(workflow, start=1):
+
+        st.write(
+            f"**{index}.** {step}"
+        )
+
+
+    st.divider()
+
+
+    # --------------------------------------------------------
+    # TECHNOLOGY STACK
+    # --------------------------------------------------------
+
+    st.subheader("🛠️ Technology Stack")
+
+
+    technologies = pd.DataFrame(
+        {
+            "Technology": [
+                "Python",
+                "Pandas",
+                "NumPy",
+                "Scikit-learn",
+                "Streamlit",
+                "Joblib"
+            ],
+
+            "Purpose": [
+                "Programming language",
+                "Data processing",
+                "Numerical computation",
+                "Machine learning",
+                "Interactive web application",
+                "Model serialization"
+            ]
+        }
+    )
+
+
+    st.dataframe(
+        technologies,
+        hide_index=True,
+        use_container_width=True
+    )
+
+
+    st.divider()
+
+
     st.caption(
-        "Customer Churn Prediction • Machine Learning Project"
+        "Telco Customer Churn Intelligence • "
+        "Machine Learning Portfolio Project"
     )
